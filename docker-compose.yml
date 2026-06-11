@@ -1,0 +1,29 @@
+services:
+  ollama:
+    image: ollama/ollama
+    ports: ["11434:11434"]   # ← tu zostawiasz, bo chcesz odpytywać Ollama z hosta (CLI, curl)
+    volumes: ["ollama_data:/root/.ollama"]
+
+  chromadb:
+    image: chromadb/chroma:0.6.3   # ← pin do wersji klienta (chromadb==0.6.3), inaczej KeyError: '_type'
+    user: root
+    ports: ["8000:8000"]     # ← dev only: pozwala odpytywać Chromę z hosta (ingest.py/query.py); w prod możesz usunąć
+    volumes: ["chroma_data:/data"]
+    environment:
+      IS_PERSISTENT: "TRUE"
+      ANONYMIZED_TELEMETRY: "FALSE"
+
+  rag-api:
+    build: .
+    ports: ["8080:8000"]     # ← host 8080 → kontener 8000 (uvicorn); eksponujesz tylko API
+    depends_on: [ollama, chromadb]
+    volumes: ["./docs:/app/docs"]
+    environment:
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: 8000
+      OLLAMA_HOST: ollama
+      OLLAMA_PORT: 11434
+
+volumes:
+  ollama_data:
+  chroma_data:

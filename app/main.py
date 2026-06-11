@@ -1,0 +1,54 @@
+# app/main.py
+import os
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from pydantic import BaseModel
+import shutil
+from pathlib import Path
+
+from ingest import ingest
+from query import query, QueryResult
+
+app = FastAPI(title="RAG Assistant")
+
+DOCS_DIR = Path(os.getenv("DOCS_DIR", "/app/docs"))
+DOCS_DIR.mkdir(exist_ok=True)
+
+
+class QueryRequest(BaseModel):
+    question: str
+
+
+class QueryResponse(BaseModel):
+    answer: str
+    sources: list[dict]
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.post("/ingest")
+def ingest_file(file: UploadFile = File(...)):
+    if not file.filename.endswith((".pdf", ".md", ".txt")):
+        raise HTTPException(status_code=400, detail="Unsupported file type")
+
+    dest = DOCS_DIR / file.filename
+    with dest.open("wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    try:
+        ingest(str(dest))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    return {"status": "ingested", "file": file.filename}
+
+
+@app.post("/query", response_model=QueryResponse)
+def query_endpoint(req: QueryRequest):
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    result: QueryResult = query(req.question)
+    return QueryResponse(answer=result.answer, sources=result.sources)

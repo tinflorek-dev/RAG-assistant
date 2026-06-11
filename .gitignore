@@ -8,3 +8,15 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Claude
+.claude/
+CLAUDE.md
+CLAUDE.local.md
+
+# Vector store data
+chroma_data/
+
+# Local env & runtime logs
+.env
+chroma.log
