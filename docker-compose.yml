@@ -7,8 +7,9 @@ services:
   chromadb:
     image: chromadb/chroma:0.6.3   # ← pin do wersji klienta (chromadb==0.6.3), inaczej KeyError: '_type'
     user: root
-    ports: ["8000:8000"]     # ← dev only: pozwala odpytywać Chromę z hosta (ingest.py/query.py); w prod możesz usunąć
-    volumes: ["chroma_data:/data"]
+    # brak ports — Chroma dostępna tylko wewnątrz sieci compose jako http://chromadb:8000
+    # UWAGA: obraz 0.6.3 zapisuje do /chroma/chroma (nie /data jak :latest) — wolumen musi pasować
+    volumes: ["chroma_data:/chroma/chroma"]
     environment:
       IS_PERSISTENT: "TRUE"
       ANONYMIZED_TELEMETRY: "FALSE"

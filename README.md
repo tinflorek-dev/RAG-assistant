@@ -125,6 +125,7 @@ same code works both locally and inside the compose network:
   breaks the `0.6.3` client (`KeyError: '_type'`).
 - The collection uses **cosine** similarity, so `query.py` reports a similarity
   score in `[0, 1]` (computed as `1 - cosine_distance`).
-- In `docker-compose.yml`, Chroma's host port `8000` is published for convenience
-  (host-based testing). For a production-style setup it can be removed — `rag-api`
-  reaches Chroma over the internal compose network as `chromadb:8000`.
+- Chroma is **not** exposed on the host — only `rag-api` reaches it, over the
+  internal compose network as `chromadb:8000`. Keeping the vector store
+  network-internal avoids unnecessary attack surface. (For one-off debugging you
+  can publish it via a `docker-compose.override.yml` rather than the base file.)
