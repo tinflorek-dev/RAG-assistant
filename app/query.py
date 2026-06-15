@@ -17,6 +17,8 @@ OLLAMA_PORT = int(os.getenv("OLLAMA_PORT", "11434"))
 EMBED_MODEL = "nomic-embed-text"
 LLM_MODEL = "qwen2.5:3b"
 TOP_K = 3
+SIMILARITY_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", "0.4"))
+NO_CONTEXT_ANSWER = "I don't have relevant information on that in the indexed documents."
 
 ollama_client = ollama.Client(host=f"http://{OLLAMA_HOST}:{OLLAMA_PORT}")
 
@@ -39,11 +41,10 @@ def retrieve(query_embedding: list[float], collection) -> dict:
         include=["documents", "metadatas", "distances"],
     )
 
-def build_context(results: dict) -> str:
-    chunks = []
-    for doc, meta in zip(results["documents"][0], results["metadatas"][0]):
-        chunks.append(f"[{meta['source']}, chunk {meta['chunk_index']}]\n{doc}")
-    return "\n\n---\n\n".join(chunks)
+def build_context(matches: list[dict]) -> str:
+    return "\n\n---\n\n".join(
+        f"[{m['source']}, chunk {m['chunk_index']}]\n{m['document']}" for m in matches
+    )
 
 def query(question: str) -> QueryResult:
     client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
@@ -52,7 +53,23 @@ def query(question: str) -> QueryResult:
     query_embedding = embed(question)
     results = retrieve(query_embedding, collection)
 
-    context = build_context(results)
+    matches = [
+        {
+            "source": meta["source"],
+            "chunk_index": meta["chunk_index"],
+            "score": round(1 - dist, 4),  # cosine distance → similarity
+            "document": doc,
+        }
+        for doc, meta, dist in zip(
+            results["documents"][0], results["metadatas"][0], results["distances"][0]
+        )
+        if 1 - dist >= SIMILARITY_THRESHOLD
+    ]
+
+    if not matches:
+        return QueryResult(answer=NO_CONTEXT_ANSWER, sources=[])
+
+    context = build_context(matches)
 
     response = ollama_client.chat(
         model=LLM_MODEL,
@@ -63,12 +80,8 @@ def query(question: str) -> QueryResult:
     )
 
     sources = [
-        {
-            "source": meta["source"],
-            "chunk_index": meta["chunk_index"],
-            "score": round(1 - dist, 4),  # cosine distance → similarity
-        }
-        for meta, dist in zip(results["metadatas"][0], results["distances"][0])
+        {"source": m["source"], "chunk_index": m["chunk_index"], "score": m["score"]}
+        for m in matches
     ]
 
     return QueryResult(

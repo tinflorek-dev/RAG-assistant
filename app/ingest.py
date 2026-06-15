@@ -19,6 +19,10 @@ OLLAMA_PORT = int(os.getenv("OLLAMA_PORT", "11434"))
 
 ollama_client = ollama.Client(host=f"http://{OLLAMA_HOST}:{OLLAMA_PORT}")
 
+
+class DocumentExistsError(ValueError):
+    """Raised when ingesting a filename that is already indexed."""
+
 def load_pdf(path: str) -> str:
     reader = PdfReader(path)
     return "\n".join(page.extract_text() for page in reader.pages)
@@ -40,7 +44,38 @@ def embed(texts: list[str]) -> list[list[float]]:
         for t in texts
     ]
 
+def get_collection():
+    client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+    return client.get_or_create_collection(
+        "documents", metadata={"hnsw:space": "cosine"}
+    )
+
+def source_exists(collection, source: str) -> bool:
+    return len(collection.get(where={"source": source}, limit=1)["ids"]) > 0
+
+def list_documents() -> list[dict]:
+    collection = get_collection()
+    result = collection.get(include=["metadatas"])
+    counts: dict[str, int] = {}
+    for meta in result["metadatas"]:
+        counts[meta["source"]] = counts.get(meta["source"], 0) + 1
+    return [{"source": source, "chunks": n} for source, n in counts.items()]
+
+def delete_document(source: str) -> bool:
+    collection = get_collection()
+    if not source_exists(collection, source):
+        return False
+    collection.delete(where={"source": source})
+    return True
+
 def ingest(file_path: str):
+    source = Path(file_path).name
+    collection = get_collection()
+    if source_exists(collection, source):
+        raise DocumentExistsError(
+            f"'{source}' is already indexed; delete it first to re-ingest."
+        )
+
     text = load_document(file_path)
 
     splitter = RecursiveCharacterTextSplitter(
@@ -51,12 +86,6 @@ def ingest(file_path: str):
 
     embeddings = embed(chunks)
 
-    client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
-    collection = client.get_or_create_collection(
-        "documents", metadata={"hnsw:space": "cosine"}
-    )
-
-    source = Path(file_path).name
     collection.add(
         ids=[f"{source}_{i}" for i in range(len(chunks))],
         embeddings=embeddings,

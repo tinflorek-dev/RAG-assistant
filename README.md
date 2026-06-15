@@ -54,9 +54,11 @@ vectors are stored in [Chroma](https://www.trychroma.com/), and the HTTP layer i
 
 | Method | Path      | Description                                                        |
 | ------ | --------- | ----------------------------------------------------------------- |
-| GET    | `/health` | Liveness check → `{"status": "ok"}`                               |
-| POST   | `/ingest` | Upload a `.pdf` / `.md` / `.txt` file (multipart) and index it     |
-| POST   | `/query`  | Body `{"question": "..."}` → `{"answer": ..., "sources": [...]}`   |
+| GET    | `/health`              | Liveness check → `{"status": "ok"}`                              |
+| POST   | `/ingest`              | Upload a `.pdf` / `.md` / `.txt` file (multipart) and index it. Re-uploading an already-indexed filename returns **409** — delete it first |
+| GET    | `/documents`           | List indexed documents → `[{"source": ..., "chunks": N}, ...]`   |
+| DELETE | `/documents/{filename}`| Remove all chunks for a document (404 if not indexed)            |
+| POST   | `/query`               | Body `{"question": "..."}` → `{"answer": ..., "sources": [...]}`. Chunks below the similarity floor are dropped; if none qualify, the answer says so and `sources` is empty |
 
 Interactive docs are available at `/docs` (Swagger) once the API is running.
 
@@ -118,6 +120,7 @@ same code works both locally and inside the compose network:
 | `OLLAMA_HOST` | `localhost` | Ollama host                      |
 | `OLLAMA_PORT` | `11434`     | Ollama port                      |
 | `DOCS_DIR`    | `/app/docs` | Where uploaded files are written |
+| `SIMILARITY_THRESHOLD` | `0.4` | Minimum cosine similarity for a retrieved chunk to be used as context |
 
 ## Notes
 

@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import shutil
 from pathlib import Path
 
-from ingest import ingest
+from ingest import ingest, list_documents, delete_document, DocumentExistsError
 from query import query, QueryResult
 
 app = FastAPI(title="RAG Assistant")
@@ -39,10 +39,24 @@ def ingest_file(file: UploadFile = File(...)):
 
     try:
         ingest(str(dest))
+    except DocumentExistsError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     return {"status": "ingested", "file": file.filename}
+
+
+@app.get("/documents")
+def documents():
+    return list_documents()
+
+
+@app.delete("/documents/{filename}")
+def delete_document_endpoint(filename: str):
+    if not delete_document(filename):
+        raise HTTPException(status_code=404, detail=f"'{filename}' is not indexed")
+    return {"status": "deleted", "file": filename}
 
 
 @app.post("/query", response_model=QueryResponse)
